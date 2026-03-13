@@ -49,14 +49,14 @@ export const projectsApi = {
     fetchProjectsApi<any>(`/${id}`),
 
   // Crear proyecto
-  create: (name: string, description: string = '') =>
+  create: (name: string, description: string = '', deadline: string = '', icon: string = 'folder') =>
     fetchProjectsApi<any>('', {
       method: 'POST',
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({ name, description, deadline, icon }),
     }),
 
   // Actualizar proyecto
-  update: (id: string, data: { name?: string; description?: string }) =>
+  update: (id: string, data: { name?: string; description?: string; deadline?: string; icon?: string }) =>
     fetchProjectsApi<any>(`/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -78,4 +78,13 @@ export const projectsApi = {
       method: 'PUT',
       body: JSON.stringify({ stage_id: stageId }),
     }),
+
+  // Obtener proyecto completo (etapas + tareas + categorías) - endpoint optimizado
+  getFull: (projectId: string) =>
+    fetchProjectsApi<{
+      project: any;
+      stages: any[];
+      tasks: any[];
+      categories: any[];
+    }>(`/${projectId}/full`),
 };

@@ -2,7 +2,9 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fafafa;
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition: background-color 0.3s, color 0.3s;
 }
 
 .main-layout__header {
@@ -10,8 +12,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.875rem 1.25rem;
-  background: #fff;
-  border-bottom: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .main-layout__nav {
@@ -22,7 +24,7 @@
 
 .main-layout__logo {
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--color-text);
   text-decoration: none;
   font-size: 1.1rem;
 }
@@ -35,20 +37,20 @@
 .main-layout__link {
   padding: 0.4rem 0.75rem;
   font-size: 0.875rem;
-  color: #525252;
+  color: var(--color-text-secondary);
   text-decoration: none;
   border-radius: 6px;
   transition: all 0.15s;
 }
 
 .main-layout__link:hover {
-  background: #f5f5f5;
-  color: #1a1a1a;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .main-layout__link--active {
-  background: #e8eeff;
-  color: #667eea;
+  background: var(--color-primary);
+  color: white;
 }
 
 /* User Menu Dropdown */
@@ -60,56 +62,79 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.875rem;
-  color: #525252;
+  padding: 0.25rem;
   background: transparent;
-  border: 1px solid #d4d4d4;
-  border-radius: 6px;
+  border: none;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .main-layout__user-btn:hover {
-  background: #f5f5f5;
-  border-color: #a3a3a3;
+  opacity: 0.8;
+}
+
+/* Avatar circular */
+.main-layout__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 
 .main-layout__dropdown-arrow {
   font-size: 0.6rem;
-  color: #888;
+  color: var(--color-text-secondary);
 }
 
 .main-layout__dropdown {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 0.25rem;
-  background: white;
-  border: 1px solid #e5e5e5;
+  margin-top: 0.5rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  min-width: 180px;
+  box-shadow: var(--shadow-md);
+  min-width: 160px;
   z-index: 100;
   overflow: hidden;
 }
 
-.main-layout__dropdown-email {
-  padding: 0.75rem;
-  font-size: 0.8rem;
-  color: #666;
-  border-bottom: 1px solid #f0f0f0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.main-layout__dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.main-layout__dropdown-item:hover {
+  background: var(--color-bg);
+}
+
+.main-layout__dropdown-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0.25rem 0;
 }
 
 .main-layout__dropdown-logout {
   display: block;
   width: 100%;
-  padding: 0.75rem;
-  font-size: 0.85rem;
-  color: #dc2626;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-danger);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -118,7 +143,7 @@
 }
 
 .main-layout__dropdown-logout:hover {
-  background: #fef2f2;
+  background: var(--color-bg);
 }
 
 .main-layout__content {

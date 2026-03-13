@@ -3,6 +3,10 @@ from flask_cors import CORS
 from views.auth_views import auth_bp
 from views.protected_views import protected_bp
 from views.project_views import projects_bp
+from views.subtask_views import subtask_bp
+from views.stage_views import stage_bp
+from views.category_views import category_bp
+from views.project_stage_views import project_stage_bp
 
 
 def create_app():
@@ -21,6 +25,10 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(protected_bp)
     app.register_blueprint(projects_bp)
+    app.register_blueprint(subtask_bp)
+    app.register_blueprint(stage_bp)
+    app.register_blueprint(category_bp)
+    app.register_blueprint(project_stage_bp)
     
     # Ruta raíz
     @app.route('/')
@@ -43,6 +51,19 @@ def create_app():
                     'delete': 'DELETE /api/projects/<id>',
                     'kanban': 'GET /api/projects/kanban',
                     'move': 'PUT /api/projects/<id>/move'
+                },
+                'categories': {
+                    'list': 'GET /api/categories',
+                    'create': 'POST /api/categories',
+                    'update': 'PUT /api/categories/<id>',
+                    'delete': 'DELETE /api/categories/<id>'
+                },
+                'project_stages': {
+                    'list': 'GET /api/project-stages/project/<id>',
+                    'create': 'POST /api/project-stages/project/<id>',
+                    'update': 'PUT /api/project-stages/<id>',
+                    'delete': 'DELETE /api/project-stages/<id>',
+                    'initialize': 'POST /api/project-stages/project/<id>/initialize'
                 }
             }
         }

@@ -20,19 +20,13 @@ def get_projects():
 @jwt_required
 def create_project():
 
-    print("create_project called")  # Debug
-
     """Crea un nuevo proyecto"""
     user_id = request.user_id
     token = getattr(request, 'token', None)
     data = request.get_json()
 
-    # print(f"Data form request: {data} , {token}, {user_id}")  # Debug
-
-
     response, status_code = ProjectController.create(data, user_id, token)
 
-    print(f"ProjectController.create response: {response}, status_code: {status_code}")  # Debug
 
     return jsonify(response), status_code
 
@@ -51,6 +45,7 @@ def get_project(project_id):
 @jwt_required
 def update_project(project_id):
     """Actualiza un proyecto"""
+
     user_id = request.user_id
     token = getattr(request, 'token', None)
     data = request.get_json()
@@ -96,6 +91,7 @@ def get_kanban():
 @jwt_required
 def move_project(project_id):
     """Mueve un proyecto a otra etapa"""
+
     user_id = request.user_id
     token = getattr(request, 'token', None)
     data = request.get_json()
@@ -105,4 +101,19 @@ def move_project(project_id):
         return jsonify({'error': 'stage_id es requerido'}), 400
     
     response, status_code = ProjectController.move_project(project_id, new_stage_id, user_id, token)
+    
+    return jsonify(response), status_code
+
+
+# ========== ENDPOINT UNIFICADO ==========
+
+@projects_bp.route('/<project_id>/full', methods=['GET'])
+@jwt_required
+def get_project_full(project_id):
+    """Obtiene un proyecto con sus etapas, tareas y categorías en una sola llamada"""
+    user_id = request.user_id
+    token = getattr(request, 'token', None)
+    
+    response, status_code = ProjectController.get_project_full(project_id, user_id, token)
+    
     return jsonify(response), status_code

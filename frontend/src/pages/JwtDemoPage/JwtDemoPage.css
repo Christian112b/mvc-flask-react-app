@@ -7,15 +7,17 @@
   max-width: 100%;
   padding: 4rem;
   box-sizing: border-box;
+  background: var(--color-bg);
 }
 
 .jwt-demo-page__card {
-  background: white;
+  background: var(--color-bg-secondary);
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
   padding: 2rem;
   text-align: center;
   overflow-y: auto;
+  border: 1px solid var(--color-border);
 }
 
 /* Card 1: Como funciona JWT - ocupa toda la altura */
@@ -39,20 +41,20 @@
 .jwt-demo-page__title {
   font-size: 1.4rem;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 0.5rem 0;
 }
 
 .jwt-demo-page__subtitle {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--color-text-secondary);
   margin: 0 0 1.5rem 0;
 }
 
 .jwt-demo-page__card-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 1rem 0;
   text-align: center;
 }
@@ -70,8 +72,8 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.8rem;
-  background: white;
-  border: 1px solid #ddd;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -80,13 +82,13 @@
 }
 
 .jwt-demo-page__step:hover {
-  border-color: #667eea;
-  background: #f0f4ff;
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
 }
 
 .jwt-demo-page__step--active {
-  border-color: #667eea;
-  background: #e8eeff;
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
 }
 
 .jwt-demo-page__step-number {
@@ -95,7 +97,7 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  background: #667eea;
+  background: var(--color-primary);
   color: white;
   border-radius: 50%;
   font-size: 0.65rem;
@@ -106,20 +108,20 @@
 .jwt-demo-page__step-title {
   font-size: 0.8rem;
   font-weight: 500;
-  color: #333;
+  color: var(--color-text);
 }
 
 .jwt-demo-page__step-arrow {
   text-align: center;
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 0.7rem;
   padding: 0.1rem 0;
 }
 
 .jwt-demo-page__step-description {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  color: #856404;
+  background: var(--color-bg);
+  border: 1px solid var(--color-warning);
+  color: var(--color-text);
   padding: 0.75rem;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -158,7 +160,7 @@
 
 .jwt-demo-page__token-section {
   padding: 0.6rem;
-  background: #f9f9f9;
+  background: var(--color-bg);
   border-radius: 6px;
   text-align: left;
 }
@@ -178,7 +180,7 @@
 
 .jwt-demo-page__token-text {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 

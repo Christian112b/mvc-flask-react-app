@@ -15,7 +15,7 @@ class ProjectController:
             projects = supabase_client.select(
                 'projects',
                 {'user_id': user_id},
-                'id,name,description,created_at,updated_at',
+                'id,name,description,created_at,updated_at,deadline,icon',
                 user_token=user_token
             )
             return projects, 200
@@ -29,7 +29,7 @@ class ProjectController:
             projects = supabase_client.select(
                 'projects',
                 {'id': project_id, 'user_id': user_id},
-                'id,name,description,created_at,updated_at',
+                'id,name,description,created_at,updated_at,deadline,icon',
                 user_token=user_token
             )
             
@@ -55,13 +55,12 @@ class ProjectController:
                 'id': project_id,
                 'name': data.get('name'),
                 'description': data.get('description', ''),
-                'user_id': user_id
+                'user_id': user_id,
+                'deadline': data.get('deadline'),
+                'icon': data.get('icon', 'folder')
             }
             
             supabase_client.insert('projects', project_data, user_token=user_token)
-            
-            # Asignar automáticamente a la primera etapa (Por hacer)
-            ProjectController._assign_to_stage(project_id, 'todo', user_token)
             
             return project_data, 201
         except Exception as e:
@@ -84,6 +83,8 @@ class ProjectController:
             update_data = {
                 'name': data.get('name'),
                 'description': data.get('description'),
+                'deadline': data.get('deadline'),
+                'icon': data.get('icon'),
                 'updated_at': 'now()'
             }
             
@@ -133,7 +134,8 @@ class ProjectController:
             'id': ps_id,
             'project_id': project_id,
             'stage_id': stage_id,
-            'position': 0
+            'stage_name': 'Por hacer',
+            'stage_color': '#6b7280'
         }
         supabase_client.insert('project_stages', ps_data, user_token=user_token)
     
@@ -162,7 +164,7 @@ class ProjectController:
             
             # Obtener project_stages para los proyectos del usuario
             # Como Supabase no permite IN con arrays en la URL easily, usamos workaround
-            all_ps = supabase_client.select('project_stages', select='id,project_id,stage_id,position', user_token=user_token)
+            all_ps = supabase_client.select('project_stages', select='id,project_id,stage_id', user_token=user_token)
             
             # Filtrar solo los proyectos del usuario
             project_id_set = set(project_ids)
@@ -188,8 +190,8 @@ class ProjectController:
                                 })
                                 break
                 
-                # Ordenar por posición
-                stage_projects.sort(key=lambda x: x['position'])
+                # Ordenar por ID
+                stage_projects.sort(key=lambda x: x.get('id', ''))
                 
                 kanban.append({
                     'stage': stage,
@@ -212,6 +214,7 @@ class ProjectController:
             # Buscar y actualizar el project_stage
             all_ps = supabase_client.select('project_stages', {'project_id': project_id}, user_token=user_token)
             
+            
             if all_ps and len(all_ps) > 0:
                 ps = all_ps[0]
                 supabase_client.update(
@@ -222,5 +225,41 @@ class ProjectController:
                 )
             
             return {'message': 'Proyecto movido'}, 200
+        except Exception as e:
+            return {'error': str(e)}, 500
+    
+    # ========== ENDPOINT UNIFICADO ==========
+    
+    @staticmethod
+    def get_project_full(project_id: str, user_id: str, user_token: str = None) -> tuple[dict, int]:
+        """Obtiene un proyecto con sus etapas, tareas y categorías en una sola llamada"""
+        from controllers import project_stage_controller, subtask_controller, category_controller
+        
+        try:
+            # Verificar que el proyecto pertenece al usuario
+            project, status = ProjectController.get_by_id(project_id, user_id, user_token)
+            if status != 200:
+                return project, status
+            
+            # Cargar todo en paralelo (simulado con llamadas secuenciales optimizadas)
+            # 1. Obtener etapas del proyecto
+            stages = project_stage_controller.get_project_stages(project_id, user_id)
+            
+            # Ordenar por stage_order (si hay etapas)
+            if stages:
+                stages = sorted(stages, key=lambda x: x.get('stage_order', 0))
+            
+            # 2. Obtener tareas del proyecto
+            tasks = subtask_controller.get_subtasks_by_project(project_id, user_id)
+            
+            # 3. Obtener categorías
+            categories = category_controller.get_categories(user_id)
+            
+            return {
+                'project': project,
+                'stages': stages,
+                'tasks': tasks,
+                'categories': categories
+            }, 200
         except Exception as e:
             return {'error': str(e)}, 500

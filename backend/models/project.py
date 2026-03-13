@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, List
+import uuid
 import secrets
 
 
@@ -12,6 +13,8 @@ class Project:
     user_id: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    deadline: Optional[str] = None
+    icon: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -20,7 +23,9 @@ class Project:
             'description': self.description,
             'user_id': self.user_id,
             'created_at': self.created_at,
-            'updated_at': self.updated_at
+            'updated_at': self.updated_at,
+            'deadline': self.deadline,
+            'icon': self.icon
         }
 
     @staticmethod
@@ -51,7 +56,6 @@ class ProjectStage:
     id: str
     project_id: str
     stage_id: str
-    position: int
     created_at: Optional[str] = None
     
     # Datos relacionados (para joins)
@@ -63,7 +67,6 @@ class ProjectStage:
             'id': self.id,
             'project_id': self.project_id,
             'stage_id': self.stage_id,
-            'position': self.position,
             'created_at': self.created_at
         }
         if self.project:
@@ -74,7 +77,7 @@ class ProjectStage:
 
     @staticmethod
     def generate_id() -> str:
-        return f"ps_{secrets.token_urlsafe(12)}"
+        return str(uuid.uuid4())
 
 
 class ProjectSchema:

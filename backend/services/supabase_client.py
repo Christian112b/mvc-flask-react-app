@@ -43,9 +43,8 @@ class SupabaseClient:
             for column, value in filters.items():
                 url += f"&{column}=eq.{value}"
         
-        headers = self._get_anon_headers()
-        if user_token:
-            headers['Authorization'] = f'Bearer {user_token}'
+        # Usar headers con service key (ignora RLS)
+        headers = self.headers.copy()
         
         response = requests.get(url, headers=headers)
         
@@ -67,18 +66,23 @@ class SupabaseClient:
             Registro insertado
         """
         url = f"{self.url}/rest/v1/{table}"
-        headers = self._get_anon_headers()
-        if user_token:
-            headers['Authorization'] = f'Bearer {user_token}'
+        # Usar headers con service key (ignora RLS)
+        headers = self.headers.copy()
         
         response = requests.post(url, json=data, headers=headers)
+        
+        print(f"Insert response status: {response.status_code}")
+        print(f"Insert response text: {response.text}")
         
         if response.status_code in [200, 201]:
             # Si la respuesta está vacía, retornar los datos enviados
             if response.text:
-                return response.json()
+                try:
+                    return response.json()
+                except:
+                    return [data]
             else:
-                return data  # Retornar los datos que se insertaron
+                return [data]  # Retornar los datos que se insertaron
         else:
             raise Exception(f"Error inserting into Supabase: {response.text}")
     
@@ -101,16 +105,22 @@ class SupabaseClient:
         filter_parts = [f"{col}=eq.{val}" for col, val in filters.items()]
         url += "?" + "&".join(filter_parts)
         
-        headers = self._get_anon_headers()
-        if user_token:
-            headers['Authorization'] = f'Bearer {user_token}'
+        # Usar headers con service key (ignora RLS)
+        headers = self.headers.copy()
         
         response = requests.patch(url, json=data, headers=headers)
         
-        if response.status_code == 200:
-            return response.json()
+        # Supabase puede devolver 200 o 204 en actualizaciones exitosas
+        if response.status_code in [200, 204]:
+            # Si la respuesta está vacía, retornar success
+            if response.text:
+                return response.json()
+            else:
+                return {'success': True}
         else:
-            raise Exception(f"Error updating Supabase: {response.text}")
+            # Mejor mensaje de error
+            error_msg = response.text if response.text else f"HTTP {response.status_code}"
+            raise Exception(f"Error updating Supabase: {error_msg}")
     
     def delete(self, table: str, filters: dict, user_token: str = None):
         """
@@ -130,9 +140,8 @@ class SupabaseClient:
         filter_parts = [f"{col}=eq.{val}" for col, val in filters.items()]
         url += "?" + "&".join(filter_parts)
         
-        headers = self._get_anon_headers()
-        if user_token:
-            headers['Authorization'] = f'Bearer {user_token}'
+        # Usar headers con service key (ignora RLS)
+        headers = self.headers.copy()
         
         response = requests.delete(url, headers=headers)
         

@@ -1,6 +1,7 @@
 import { useState, type JSX, ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import './MainLayout.css'
 
 interface MainLayoutProps {
@@ -11,6 +12,15 @@ export default function MainLayout({ children }: MainLayoutProps): JSX.Element {
   const { isAuthenticated, user, logout } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const location = useLocation()
+  const { theme, toggleTheme } = useTheme()
+
+  // Obtener iniciales del usuario para el avatar
+  const getUserInitials = () => {
+    if (user?.email) {
+      return user.email.charAt(0).toUpperCase()
+    }
+    return 'U'
+  }
 
   return (
     <div className="main-layout">
@@ -24,19 +34,7 @@ export default function MainLayout({ children }: MainLayoutProps): JSX.Element {
                 to="/" 
                 className={`main-layout__link ${location.pathname === '/' ? 'main-layout__link--active' : ''}`}
               >
-                Inicio
-              </Link>
-              <Link 
-                to="/projects" 
-                className={`main-layout__link ${location.pathname === '/projects' ? 'main-layout__link--active' : ''}`}
-              >
                 Proyectos
-              </Link>
-              <Link 
-                to="/jwt-demo" 
-                className={`main-layout__link ${location.pathname === '/jwt-demo' ? 'main-layout__link--active' : ''}`}
-              >
-                JWT Demo
               </Link>
             </div>
           )}
@@ -49,13 +47,25 @@ export default function MainLayout({ children }: MainLayoutProps): JSX.Element {
               className="main-layout__user-btn"
               onClick={() => setDropdownOpen(!dropdownOpen)}
             >
-              {user?.email || 'Usuario'}
+              <div className="main-layout__avatar">
+                {getUserInitials()}
+              </div>
               <span className="main-layout__dropdown-arrow">▼</span>
             </button>
             
             {dropdownOpen && (
               <div className="main-layout__dropdown">
-                <div className="main-layout__dropdown-email">{user?.email}</div>
+                <button
+                  type="button"
+                  className="main-layout__dropdown-item"
+                  onClick={() => {
+                    toggleTheme()
+                    setDropdownOpen(false)
+                  }}
+                >
+                  {theme === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro'}
+                </button>
+                <div className="main-layout__dropdown-divider"></div>
                 <button
                   type="button"
                   className="main-layout__dropdown-logout"
@@ -64,7 +74,7 @@ export default function MainLayout({ children }: MainLayoutProps): JSX.Element {
                     setDropdownOpen(false)
                   }}
                 >
-                  Cerrar sesion
+                  Cerrar sesión
                 </button>
               </div>
             )}

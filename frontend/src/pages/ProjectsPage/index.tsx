@@ -1,4 +1,5 @@
 import { useState, useEffect, type JSX } from 'react'
+import { createPortal } from 'react-dom'
 import {
   DndContext,
   rectIntersection,
@@ -14,6 +15,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -42,6 +44,114 @@ interface Stage {
   stage_name: string
   stage_color: string
   stage_order: number
+}
+
+// Componente para cada etapa en el formulario de etapas (con drag and drop)
+interface SortableStageItemProps {
+  id: number
+  stage: { stage_name: string; stage_color: string; stage_order: number }
+  index: number
+  newStages: { stage_name: string; stage_color: string; stage_order: number }[]
+  setNewStages: React.Dispatch<React.SetStateAction<{ stage_name: string; stage_color: string; stage_order: number }[]>>
+  showColorPicker: number | null
+  setShowColorPicker: React.Dispatch<React.SetStateAction<number | null>>
+}
+
+function SortableStageItem({ id, stage, index, newStages, setNewStages, showColorPicker, setShowColorPicker }: SortableStageItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? transition : 'none',
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 'auto',
+  }
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={{...style, display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: stage.stage_color + '20', borderLeft: `4px solid ${stage.stage_color}`, padding: '4px 8px', borderRadius: '4px' }}
+      className="stage-item-form" 
+      {...attributes}
+    >
+      <div 
+        className="stage-drag-handle" 
+        style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+        {...listeners}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="9" cy="6" r="1.5" />
+          <circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" />
+          <circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" />
+          <circle cx="15" cy="18" r="1.5" />
+        </svg>
+      </div>
+      <input
+        type="text"
+        value={stage.stage_name}
+        onChange={(e) => {
+          if (e.target.value.length <= 50) {
+            const updated = [...newStages]
+            updated[index] = { ...updated[index], stage_name: e.target.value }
+            setNewStages(updated)
+          }
+        }}
+        className="stage-name-input"
+        placeholder="Nombre de la etapa"
+        maxLength={50}
+        style={{ flex: 1, minWidth: '80px', maxWidth: '200px', padding: '0.25rem 0.5rem', fontSize: '0.9rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#2a3441', color: '#e2e8f0' }}
+      />
+      <div className="stage-color-picker" style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+        {STAGE_COLORS.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => {
+              const updated = [...newStages]
+              updated[index] = { ...updated[index], stage_color: color }
+              setNewStages(updated)
+            }}
+            style={{ 
+              width: '18px', 
+              height: '18px', 
+              borderRadius: '3px', 
+              backgroundColor: color,
+              border: stage.stage_color === color ? '2px solid white' : '1px solid rgba(255,255,255,0.2)',
+              cursor: 'pointer',
+              padding: 0,
+              opacity: stage.stage_color === color ? 1 : 0.6,
+              transition: 'opacity 0.2s',
+              flexShrink: 0
+            }}
+          />
+        ))}
+      </div>
+      {newStages.length > 1 && (
+        <button
+          className="stage-remove-btn"
+          onClick={() => {
+            const updated = newStages.filter((_, i) => i !== index).map((s, i) => ({ ...s, stage_order: i }))
+            setNewStages(updated)
+          }}
+          title="Eliminar etapa"
+          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
 }
 
 interface Task {
@@ -195,6 +305,142 @@ function CreateProjectModal({ isOpen, onClose, onSubmit }: CreateProjectModalPro
       </div>
     </div>
   )
+}
+
+// Modal para agregar etapas con drag-and-drop
+interface AddStageModalProps {
+  isOpen: boolean
+  onClose: () => void
+  stages: { stage_name: string; stage_color: string; stage_order: number }[]
+  setStages: React.Dispatch<React.SetStateAction<{ stage_name: string; stage_color: string; stage_order: number }[]>>
+  onSave: () => void
+}
+
+function AddStageModal({ isOpen, onClose, stages, setStages, onSave }: AddStageModalProps) {
+  const addNewStage = () => {
+    const newOrder = stages.length
+    setStages([
+      ...stages,
+      { stage_name: 'Nueva etapa', stage_color: STAGE_COLORS[newOrder % STAGE_COLORS.length], stage_order: newOrder }
+    ])
+  }
+
+  const removeNewStage = (index: number) => {
+    if (stages.length <= 1) return
+    const updated = stages.filter((_, i) => i !== index).map((s, i) => ({ ...s, stage_order: i }))
+    setStages(updated)
+  }
+
+  const updateNewStage = (index: number, field: 'stage_name' | 'stage_color', value: string) => {
+    const updated = [...stages]
+    updated[index] = { ...updated[index], [field]: value }
+    setStages(updated)
+  }
+
+  if (!isOpen) {
+    console.log('Modal cerrado')
+    return null
+  }
+
+  console.log('Modal ABIERTO, renderizando con Portal...')
+
+  const modalContent = (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999, position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', zIndex: 10000, position: 'relative', margin: 'auto' }}>
+        <div className="modal__header">
+          <h2>Agregar Etapas</h2>
+          <button className="modal__close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal__content">
+          <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+            Define las etapas de tu flujo de trabajo arrastrando para reordenar.
+          </p>
+          
+          <div className="stages-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+            {stages.map((stage, index) => (
+              <div key={index} className="stage-item-form" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                <div className="stage-drag-handle" style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="9" cy="6" r="1.5" />
+                    <circle cx="15" cy="6" r="1.5" />
+                    <circle cx="9" cy="12" r="1.5" />
+                    <circle cx="15" cy="12" r="1.5" />
+                    <circle cx="9" cy="18" r="1.5" />
+                    <circle cx="15" cy="18" r="1.5" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  value={stage.stage_name}
+                  onChange={(e) => updateNewStage(index, 'stage_name', e.target.value)}
+                  className="stage-name-input"
+                  placeholder="Nombre de la etapa"
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                />
+                <div className="stage-color-picker" style={{ display: 'flex', gap: '4px' }}>
+                  {STAGE_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`color-option ${stage.stage_color === color ? 'selected' : ''}`}
+                      style={{ 
+                        backgroundColor: color, 
+                        width: '24px', 
+                        height: '24px', 
+                        borderRadius: '50%', 
+                        border: stage.stage_color === color ? '3px solid white' : '2px solid transparent',
+                        cursor: 'pointer',
+                        boxShadow: stage.stage_color === color ? '0 0 0 2px var(--primary-color)' : 'none'
+                      }}
+                      onClick={() => updateNewStage(index, 'stage_color', color)}
+                    />
+                  ))}
+                </div>
+                {stages.length > 1 && (
+                  <button
+                    className="stage-remove-btn"
+                    onClick={() => removeNewStage(index)}
+                    title="Eliminar etapa"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <button 
+            type="button"
+            onClick={addNewStage}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'var(--bg-secondary)', border: '1px dashed var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', width: '100%', justifyContent: 'center', marginBottom: '1rem' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Agregar etapa
+          </button>
+        </div>
+        
+        <div className="modal__actions">
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            Cancelar
+          </button>
+          <button type="button" onClick={onSave} className="btn btn-primary" style={{ background: '#f97316', borderColor: '#f97316' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
+              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+              <polyline points="17,21 17,13 7,13 7,21" />
+              <polyline points="7,3 7,8 15,8" />
+            </svg>
+            Guardar Etapas
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  return createPortal(modalContent, document.body)
 }
 
 interface TaskCardProps {
@@ -539,6 +785,39 @@ export default function ProjectsPage(): JSX.Element {
   const [projectToEdit, setProjectToEdit] = useState<ProjectWithTasks | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [showStageModal, setShowStageModal] = useState(false)
+  const [showStageForm, setShowStageForm] = useState(false)
+  const [showColorPicker, setShowColorPicker] = useState<number | null>(null)
+  const [savingStages, setSavingStages] = useState(false)
+  
+  // Sensores para drag and drop del formulario de etapas
+  const stageFormSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+  
+  const [newStages, setNewStages] = useState<{ stage_name: string; stage_color: string; stage_order: number }[]>([
+    { stage_name: 'Por hacer', stage_color: '#6b7280', stage_order: 0 }
+  ])
+
+  // Handler para reorder de etapas en el formulario
+  const handleStagesReorder = (activeId: number, overId: number) => {
+    const oldIndex = activeId
+    const newIndex = overId
+    
+    if (oldIndex === newIndex) return
+    
+    const updated = [...newStages]
+    const [movedItem] = updated.splice(oldIndex, 1)
+    updated.splice(newIndex, 0, movedItem)
+    
+    // Actualizar el orden
+    const reordered = updated.map((stage, index) => ({
+      ...stage,
+      stage_order: index
+    }))
+    
+    setNewStages(reordered)
+  }
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [selectedProjectData, setSelectedProjectData] = useState<{
     stages: Stage[];
@@ -661,6 +940,59 @@ export default function ProjectsPage(): JSX.Element {
     } catch (err) {
       toast.error('Error al agregar etapa')
     }
+  }
+
+  // Guardar las etapas del proyecto (create o update)
+  const handleSaveInitialStages = async () => {
+    if (!selectedProjectId || newStages.length === 0) return
+    
+    try {
+      // Si hay etapas existentes, primero las eliminamos en paralelo
+      if (selectedProjectData && selectedProjectData.stages.length > 0) {
+        await Promise.all(selectedProjectData.stages.map(stage => projectStagesApi.delete(stage.id)))
+      }
+      
+      // Crear las nuevas etapas en paralelo
+      await Promise.all(newStages.map((stage, i) => 
+        projectStagesApi.create(selectedProjectId, {
+          stage_id: `stage_${i}`,
+          stage_name: stage.stage_name,
+          stage_color: stage.stage_color,
+          stage_order: i
+        })
+      ))
+      
+      // Recargar los datos del proyecto
+      const data = await projectsApi.getFull(selectedProjectId)
+      setSelectedProjectData({
+        stages: data.stages,
+        tasks: data.tasks,
+        categories: data.categories
+      })
+      toast.success('Etapas guardadas correctamente')
+    } catch (err) {
+      toast.error('Error al guardar las etapas')
+    }
+  }
+
+  const addNewStage = () => {
+    const newOrder = newStages.length
+    setNewStages([
+      ...newStages,
+      { stage_name: 'Nueva etapa', stage_color: STAGE_COLORS[newOrder % STAGE_COLORS.length], stage_order: newOrder }
+    ])
+  }
+
+  const removeNewStage = (index: number) => {
+    if (newStages.length <= 1) return
+    const updated = newStages.filter((_, i) => i !== index).map((s, i) => ({ ...s, stage_order: i }))
+    setNewStages(updated)
+  }
+
+  const updateNewStage = (index: number, field: 'stage_name' | 'stage_color', value: string) => {
+    const updated = [...newStages]
+    updated[index] = { ...updated[index], [field]: value }
+    setNewStages(updated)
   }
   const handleSelectProject = async (projectId: string) => {
     try {
@@ -796,7 +1128,44 @@ export default function ProjectsPage(): JSX.Element {
           >
             ← Volver
           </button>
-          <h1 className="projects-page__title">{selectedProject?.name || 'Proyecto'}</h1>
+          <h1 className="projects-page__title" style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>{selectedProject?.name || 'Proyecto'}</h1>
+          {!showStageForm && (
+            <button
+              type="button"
+              onClick={() => {
+                // Load existing stages into newStages for editing
+                if (selectedProjectData && selectedProjectData.stages.length > 0) {
+                  setNewStages(selectedProjectData.stages.map(s => ({
+                    stage_name: s.stage_name,
+                    stage_color: s.stage_color,
+                    stage_order: s.stage_order
+                  })))
+                } else {
+                  setNewStages([{ stage_name: 'Por hacer', stage_color: '#6b7280', stage_order: 0 }])
+                }
+                setShowStageForm(true)
+              }}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                padding: '0.5rem 1rem', 
+                background: '#f97316', 
+                border: 'none', 
+                borderRadius: '6px', 
+                color: 'white', 
+                fontWeight: '600',
+                cursor: 'pointer',
+                marginLeft: 'auto'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Editar Etapas
+            </button>
+          )}
         </div>
         
         {loadingProject ? (
@@ -812,24 +1181,127 @@ export default function ProjectsPage(): JSX.Element {
               onDragOver={handleKanbanDragOver}
               onDragEnd={handleKanbanDragEnd}
             >
-              {selectedProjectData.stages.length === 0 ? (
-                <div className="kanban-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                  <div className="kanban-empty__icon" style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <line x1="9" y1="3" x2="9" y2="21" />
-                      <line x1="15" y1="3" x2="15" y2="21" />
-                    </svg>
-                  </div>
-                  <p className="kanban-empty__text">Este proyecto no tiene etapas</p>
-                  <button 
-                    type="button" 
-                    className="kanban-empty__btn"
-                    style={{ display: 'flex', justifyContent: 'center', margin: '0 auto' }}
-                    onClick={() => setShowStageModal(true)}
-                  >
-                    + Agregar etapas al proyecto
-                  </button>
+              {showStageForm || selectedProjectData.stages.length === 0 ? (
+                <div className="kanban-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',  margin: '0 auto' }}>
+                  {selectedProjectData.stages.length === 0 && !showStageForm && (
+                    <>
+                      <div className="kanban-empty__icon" style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <line x1="9" y1="3" x2="9" y2="21" />
+                          <line x1="15" y1="3" x2="15" y2="21" />
+                        </svg>
+                      </div>
+                      <p className="kanban-empty__text">Este proyecto no tiene etapas</p>
+                    </>
+                  )}
+                  {selectedProjectData.stages.length === 0 && !showStageForm ? (
+                    <button 
+                      type="button" 
+                      className="kanban-empty__btn"
+                      style={{ display: 'flex', justifyContent: 'center', margin: '0 auto' }}
+                      onClick={() => setShowStageForm(true)}
+                    >
+                      + Agregar etapas
+                    </button>
+                  ) : (
+                    <div className="inline-stage-form" style={{ marginTop: '1rem', width: '100%', maxWidth: '1000px', marginLeft: 'auto', marginRight: 'auto' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', marginBottom: '1rem' }}>
+                        <h4 style={{ textAlign: 'center', margin: 0 }}>Configurar etapas del proyecto</h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowStageForm(false)}
+                          style={{ position: 'absolute', right: 0, background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                          title="Cerrar"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <DndContext
+                        sensors={stageFormSensors}
+                        collisionDetection={rectIntersection}
+                        onDragEnd={(event) => {
+                          const { active, over } = event
+                          if (over && active.id !== over.id) {
+                            handleStagesReorder(active.id as number, over.id as number)
+                          }
+                        }}
+                      >
+                        <SortableContext items={newStages.map((_, i) => i)} strategy={verticalListSortingStrategy}>
+                          <div className="stages-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem', flexWrap: 'nowrap', whiteSpace: 'nowrap', overflow: 'visible' }}>
+                            {newStages.map((stage, index) => (
+                              <SortableStageItem
+                                key={index}
+                                id={index}
+                                stage={stage}
+                                index={index}
+                                newStages={newStages}
+                                setNewStages={setNewStages}
+                                showColorPicker={showColorPicker}
+                                setShowColorPicker={setShowColorPicker}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                      
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '0.5rem' }}>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const newOrder = newStages.length
+                            setNewStages([
+                              ...newStages,
+                              { stage_name: 'Nueva etapa', stage_color: STAGE_COLORS[newOrder % STAGE_COLORS.length], stage_order: newOrder }
+                            ])
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem', background: 'var(--bg-secondary)', border: '1px dashed var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          Agregar etapa
+                        </button>
+                        
+                        <button 
+                          type="button"
+                          onClick={async () => {
+                            setSavingStages(true)
+                            try {
+                              await handleSaveInitialStages()
+                              setShowStageForm(false)
+                            } catch (err) {
+                              toast.error('Error al guardar las etapas')
+                            } finally {
+                              setSavingStages(false)
+                            }
+                          }}
+                          disabled={savingStages}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: savingStages ? '#9ca3af' : '#f97316', border: 'none', borderRadius: '6px', color: 'white', cursor: savingStages ? 'not-allowed' : 'pointer', fontWeight: '500' }}
+                        >
+                          {savingStages ? (
+                            <>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="loading-spinner">
+                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="32" />
+                              </svg>
+                              Guardando...
+                            </>
+                          ) : (
+                            <>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                                <polyline points="17,21 17,13 7,13 7,21" />
+                                <polyline points="7,3 7,8 15,8" />
+                              </svg>
+                              Guardar Etapas
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 selectedProjectData.stages.map((stage) => (
@@ -1161,82 +1633,6 @@ export default function ProjectsPage(): JSX.Element {
         onClose={() => setShowModal(false)}
         onSubmit={handleCreateProject}
       />
-
-      {/* Modal para agregar etapa */}
-      {showStageModal && (
-        <AddStageModal
-          onClose={() => setShowStageModal(false)}
-          onSubmit={handleAddStage}
-        />
-      )}
-    </div>
-  )
-}
-
-// Modal simple para agregar etapa
-interface AddStageModalProps {
-  onClose: () => void
-  onSubmit: (stageName: string, stageColor: string) => Promise<void>
-}
-
-function AddStageModal({ onClose, onSubmit }: AddStageModalProps) {
-  const [stageName, setStageName] = useState('')
-  const [stageColor, setStageColor] = useState('#6b7280')
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!stageName.trim()) return
-    
-    setLoading(true)
-    try {
-      await onSubmit(stageName, stageColor)
-      onClose()
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--small" onClick={e => e.stopPropagation()}>
-        <div className="modal__header">
-          <h2>Agregar Etapa</h2>
-          <button className="modal__close" onClick={onClose} disabled={loading}>×</button>
-        </div>
-        <form onSubmit={handleSubmit} className="modal__content">
-          <div className="form-group">
-            <label>Nombre de la etapa</label>
-            <input
-              type="text"
-              value={stageName}
-              onChange={e => setStageName(e.target.value)}
-              placeholder="Ej: Por hacer, En progreso..."
-              className="form-input"
-              autoFocus
-              disabled={loading}
-            />
-          </div>
-          <div className="form-group">
-            <label>Color</label>
-            <input
-              type="color"
-              value={stageColor}
-              onChange={e => setStageColor(e.target.value)}
-              className="form-input form-input--color"
-              disabled={loading}
-            />
-          </div>
-          <div className="modal__actions">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={loading}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading || !stageName.trim()}>
-              {loading ? 'Agregando...' : 'Agregar'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   )
 }

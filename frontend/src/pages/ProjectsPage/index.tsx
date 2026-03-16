@@ -1,7 +1,8 @@
-import { useState, useEffect, type JSX } from 'react'
+import { useState, useEffect, useRef, type JSX, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
+  closestCenter,
   rectIntersection,
   KeyboardSensor,
   PointerSensor,
@@ -10,6 +11,8 @@ import {
   useDroppable,
   DragEndEvent,
   DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -23,8 +26,45 @@ import { projectsApi } from '../../lib/projectsApi'
 import { subtasksApi } from '../../lib/subtasksApi'
 import { projectStagesApi } from '../../lib/projectStagesApi'
 import { categoriesApi, type Category } from '../../lib/categoriesApi'
+import { validateTaskName, validateTaskDescription, sanitizeInput, MAX_TASK_NAME_LENGTH, MAX_TASK_DESCRIPTION_LENGTH } from '../../lib/validation'
 import './ProjectsPage.css'
 import toast from 'react-hot-toast'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faBug, faPencil, faStar, faArrowTrendUp, faBook, faTrash, faFile } from '@fortawesome/free-solid-svg-icons'
+
+// Icon mapping for categories
+function getCategoryIcon(categoryName: string, icon?: string): JSX.Element {
+  const iconMap: Record<string, JSX.Element> = {
+    Bug: <FontAwesomeIcon icon={faBug} />,
+    bug: <FontAwesomeIcon icon={faBug} />,
+    Documentacion: <FontAwesomeIcon icon={faFile} />,
+    Documentación: <FontAwesomeIcon icon={faFile} />,
+    Documentation: <FontAwesomeIcon icon={faFile} />,
+    documentacion: <FontAwesomeIcon icon={faFile} />,
+    documentation: <FontAwesomeIcon icon={faFile} />,
+    Feature: <FontAwesomeIcon icon={faStar} />,
+    feature: <FontAwesomeIcon icon={faStar} />,
+    Caracteristica: <FontAwesomeIcon icon={faStar} />,
+    Característica: <FontAwesomeIcon icon={faStar} />,
+    Improvement: <FontAwesomeIcon icon={faArrowTrendUp} />,
+    improvement: <FontAwesomeIcon icon={faArrowTrendUp} />,
+    Mejora: <FontAwesomeIcon icon={faArrowTrendUp} />,
+    mejora: <FontAwesomeIcon icon={faArrowTrendUp} />,
+    Aprendizaje: <FontAwesomeIcon icon={faBook} />,
+    aprendizaje: <FontAwesomeIcon icon={faBook} />,
+    Learning: <FontAwesomeIcon icon={faBook} />,
+    learning: <FontAwesomeIcon icon={faBook} />,
+    Default: (
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+    ),
+  }
+
+  // Use the icon field if provided, otherwise fallback to name mapping
+  const key = icon || categoryName
+  return iconMap[key] || iconMap[categoryName] || iconMap.Default
+}
 
 // Colores predefinidos para etapas
 const STAGE_COLORS = [
@@ -446,11 +486,12 @@ function AddStageModal({ isOpen, onClose, stages, setStages, onSave }: AddStageM
 interface TaskCardProps {
   task: Task
   onDelete: (taskId: string) => void
+  onEdit?: (task: Task) => void
   stageColor?: string
   category?: Category
 }
 
-function SortableTaskCard({ task, onDelete, stageColor, category }: TaskCardProps) {
+function SortableTaskCard({ task, onDelete, onEdit, stageColor, category }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -464,28 +505,52 @@ function SortableTaskCard({ task, onDelete, stageColor, category }: TaskCardProp
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    borderLeftColor: stageColor || 'var(--color-primary)',
   }
+
+  const cardStyle = category 
+    ? { ...style, borderColor: category.color, '--task-category-color': category.color } as React.CSSProperties
+    : style
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={cardStyle}
       {...attributes}
       {...listeners}
       className="task-card"
     >
-      {category && (
+      <div className="task-card__header">
         <span 
-          className="task-card__category" 
-          style={{ backgroundColor: category.color }}
+          className="task-card__icon" 
+          style={{ backgroundColor: category?.color || '#6b7280' }}
         >
-          {category.name}
+          {category ? getCategoryIcon(category.name, category.icon) : (
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="10" />
+            </svg>
+          )}
         </span>
-      )}
-      <span className="task-card__title">{task.name}</span>
+        <span 
+          className="task-card__title-container"
+          style={category ? { borderColor: category.color } : {}}
+        >
+          <span className="task-card__title">{task.name}</span>
+        </span>
+      </div>
       {task.description && (
         <span className="task-card__description">{task.description}</span>
+      )}
+      {onEdit && (
+        <button 
+          className="task-card__edit"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit(task)
+          }}
+          title="Editar tarea"
+        >
+          <FontAwesomeIcon icon={faPencil} />
+        </button>
       )}
       <button 
         className="task-card__delete"
@@ -493,8 +558,9 @@ function SortableTaskCard({ task, onDelete, stageColor, category }: TaskCardProp
           e.stopPropagation()
           onDelete(task.id)
         }}
+        title="Eliminar tarea"
       >
-        ×
+        <FontAwesomeIcon icon={faTrash} />
       </button>
     </div>
   )
@@ -505,14 +571,47 @@ interface KanbanColumnProps {
   tasks: Task[]
   categories: Category[]
   onDeleteTask: (taskId: string) => void
+  onEditTask?: (task: Task) => void
+  onUpdateTask?: (taskId: string, data: { name?: string; description?: string; category_id?: string }) => void
   onAddTask: (stageId: string, taskName: string, description?: string, categoryId?: string) => void
+  isCollapsed?: boolean
+  onToggleCollapse?: (collapsed: boolean) => void
+  index?: number
+  // Global editing state from parent
+  editingTaskId?: string | null
+  onSetEditingTaskId?: (taskId: string | null) => void
+  showAddForm?: boolean
+  onSetShowAddForm?: (show: boolean) => void
 }
 
-function KanbanColumn({ stage, tasks, categories, onDeleteTask, onAddTask }: KanbanColumnProps) {
+function KanbanColumn({ stage, tasks, categories, onDeleteTask, onEditTask, onUpdateTask, onAddTask, isCollapsed: externalIsCollapsed, onToggleCollapse, index, editingTaskId, onSetEditingTaskId, showAddForm, onSetShowAddForm }: KanbanColumnProps) {
   const [newTask, setNewTask] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newCategoryId, setNewCategoryId] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [internalIsCollapsed, setInternalIsCollapsed] = useState(false)
+  
+  // Edit form state - local state for form inputs
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  
+  // Form validation errors
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [descriptionError, setDescriptionError] = useState<string | null>(null)
+
+  // Use external state from parent if available
+  const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) || null : null
+  const isFormVisible = showAddForm === true
+
+  // Use external state if provided, otherwise use internal state
+  const isCollapsed = externalIsCollapsed !== undefined ? externalIsCollapsed : internalIsCollapsed
+  const setIsCollapsed = (collapsed: boolean) => {
+    if (onToggleCollapse) {
+      onToggleCollapse(collapsed)
+    } else {
+      setInternalIsCollapsed(collapsed)
+    }
+  }
   
   const { setNodeRef } = useDroppable({
     id: stage.stage_id,
@@ -524,17 +623,102 @@ function KanbanColumn({ stage, tasks, categories, onDeleteTask, onAddTask }: Kan
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (newTask.trim()) {
-      onAddTask(stage.stage_id, newTask, newDescription || undefined, newCategoryId || undefined)
-      setNewTask('')
-      setNewDescription('')
-      setNewCategoryId('')
-      setShowForm(false)
+    
+    // Validate input
+    const nameResult = validateTaskName(newTask)
+    const descResult = validateTaskDescription(newDescription)
+    
+    if (nameResult.error) {
+      setNameError(nameResult.error)
+      return
     }
+    
+    if (descResult.error) {
+      setDescriptionError(descResult.error)
+      return
+    }
+    
+    // Clear errors and submit
+    setNameError(null)
+    setDescriptionError(null)
+    
+    // Sanitize inputs before sending
+    const sanitizedName = sanitizeInput(nameResult.value)
+    const sanitizedDesc = descResult.value ? sanitizeInput(descResult.value) : undefined
+    
+    onAddTask(stage.stage_id, sanitizedName, sanitizedDesc, newCategoryId || undefined)
+    setNewTask('')
+    setNewDescription('')
+    setNewCategoryId('')
+    onSetShowAddForm?.(false)
   }
 
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!editingTask) return
+    
+    // Validate input
+    const nameResult = validateTaskName(editName)
+    const descResult = validateTaskDescription(editDescription)
+    
+    if (nameResult.error) {
+      setNameError(nameResult.error)
+      return
+    }
+    
+    if (descResult.error) {
+      setDescriptionError(descResult.error)
+      return
+    }
+    
+    // Clear errors and submit
+    setNameError(null)
+    setDescriptionError(null)
+    
+    // Sanitize inputs before sending
+    const sanitizedName = sanitizeInput(nameResult.value)
+    const sanitizedDesc = descResult.value ? sanitizeInput(descResult.value) : undefined
+    
+    onUpdateTask?.(editingTask.id, {
+      name: sanitizedName,
+      description: sanitizedDesc,
+      category_id: editCategoryId || undefined
+    })
+    onSetEditingTaskId?.(null)
+    setEditName('')
+    setEditDescription('')
+    setEditCategoryId('')
+  }
+
+  const openEditForm = (task: Task) => {
+    // Close add form if open
+    onSetShowAddForm?.(false)
+    // Clear previous errors
+    setNameError(null)
+    setDescriptionError(null)
+    // If clicking on the same task that's already being edited, close it
+    if (editingTaskId === task.id) {
+      onSetEditingTaskId?.(null)
+      return
+    }
+    // Otherwise, open the edit form for the new task
+    onSetEditingTaskId?.(task.id)
+    setEditName(task.name)
+    setEditDescription(task.description || '')
+    setEditCategoryId(task.category_id || '')
+  }
+
+  // Close edit and add forms when column is collapsed
+  useEffect(() => {
+    if (isCollapsed) {
+      onSetEditingTaskId?.(null)
+      onSetShowAddForm?.(false)
+    }
+  }, [isCollapsed])
+
   return (
-    <div className="kanban-column" ref={setNodeRef}>
+    <div className={`kanban-column ${isCollapsed ? 'kanban-column--collapsed' : ''}`} ref={setNodeRef}>
       <div 
         className="kanban-column__header"
         style={{ 
@@ -542,6 +726,13 @@ function KanbanColumn({ stage, tasks, categories, onDeleteTask, onAddTask }: Kan
           backgroundColor: stage.stage_color 
         }}
       >
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="collapse-btn"
+          title={isCollapsed ? 'Expandir' : 'Colapsar'}
+        >
+          {isCollapsed ? '▶' : '◀'}
+        </button>
         <h3 className="kanban-column__title">{stage.stage_name}</h3>
         <span className="kanban-column__count">{tasks.length}</span>
       </div>
@@ -551,55 +742,249 @@ function KanbanColumn({ stage, tasks, categories, onDeleteTask, onAddTask }: Kan
           strategy={verticalListSortingStrategy}
         >
           {tasks.map((task) => (
-            <SortableTaskCard
-              key={task.id}
-              task={task}
-              stageColor={stage.stage_color}
-              category={getCategoryById(task.category_id)}
-              onDelete={onDeleteTask}
-            />
+            <Fragment key={task.id}>
+              {editingTask?.id === task.id ? (
+                <form 
+                  onSubmit={handleEditSubmit} 
+                  className="task-form task-form--inline" 
+                  style={{ 
+                    borderColor: getCategoryById(task.category_id)?.color || '#6b7280',
+                    '--task-category-color': getCategoryById(task.category_id)?.color || '#6b7280'
+                  } as React.CSSProperties}
+                >
+                  <div className="task-card__header">
+                    <span className="task-card__icon" style={{ backgroundColor: getCategoryById(task.category_id)?.color || '#6b7280' }}>
+                      {getCategoryById(task.category_id) ? getCategoryIcon(getCategoryById(task.category_id)?.name || '', getCategoryById(task.category_id)?.icon || '') : (
+                        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                      )}
+                    </span>
+                    <span className="task-card__title-container" style={{ borderColor: getCategoryById(task.category_id)?.color || '#6b7280' }}>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => {
+                          setEditName(e.target.value)
+                          if (nameError) setNameError(null)
+                        }}
+                        placeholder="Nombre de tarea"
+                        maxLength={MAX_TASK_NAME_LENGTH}
+                        autoFocus
+                        className="task-card__title"
+                        style={{ background: 'transparent', border: 'none', flex: 1, padding: 0, width: '100%' }}
+                      />
+                      {nameError && (
+                        <span style={{ color: '#ef4444', fontSize: '12px', marginLeft: '8px' }}>{nameError}</span>
+                      )}
+                    </span>
+                  </div>
+                  <span className="task-card__description">
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => {
+                        setEditDescription(e.target.value)
+                        if (descriptionError) setDescriptionError(null)
+                      }}
+                      placeholder="Descripción (opcional)"
+                      maxLength={MAX_TASK_DESCRIPTION_LENGTH}
+                      style={{ 
+                        width: '100%', 
+                        background: 'transparent', 
+                        border: 'none', 
+                        color: '#9ca3af',
+                        fontSize: '0.75rem',
+                        resize: 'none',
+                        outline: 'none'
+                      }}
+                    />
+                    {descriptionError && (
+                      <span style={{ color: '#ef4444', fontSize: '12px', marginLeft: '8px' }}>{descriptionError}</span>
+                    )}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '0.5rem', borderTop: '1px solid #3d3d3d', gap: '0.5rem' }}>
+                    {categories.length > 0 && (
+                      <div className="task-form-category-select">
+                        <div
+                          className={`task-form-category-select__trigger ${!editCategoryId ? 'task-form-category-select__trigger--empty' : ''}`}
+                          onClick={() => {
+                            const select = document.getElementById('edit-task-category-select');
+                            if (select) (select as HTMLSelectElement).click();
+                          }}
+                        >
+                          {editCategoryId && getCategoryById(editCategoryId) ? (
+                            <>
+                              <span className="task-form-category-select__icon" style={{ backgroundColor: getCategoryById(editCategoryId)?.color }}>
+                                {getCategoryIcon(getCategoryById(editCategoryId)?.name || '', getCategoryById(editCategoryId)?.icon)}
+                              </span>
+                              <span style={{ flex: 1 }}>{getCategoryById(editCategoryId)?.name}</span>
+                            </>
+                          ) : (
+                            <span style={{ flex: 1 }}>Sin categoría</span>
+                          )}
+                          <span className="task-form-category-select__arrow">▼</span>
+                        </div>
+                        <select
+                          id="edit-task-category-select"
+                          value={editCategoryId}
+                          onChange={(e) => setEditCategoryId(e.target.value)}
+                          className="task-form-category-select__hidden"
+                        >
+                          <option value="">Sin categoría</option>
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
+                      <button 
+                        type="submit" 
+                        className="task-card__edit"
+                        style={{ position: 'relative', top: 'auto', right: 'auto', width: '24px', height: '24px' }}
+                        title="Guardar"
+                      >✓</button>
+                      <button 
+                        type="button" 
+                        onClick={() => onSetEditingTaskId?.(null)} 
+                        className="task-card__delete"
+                        style={{ position: 'relative', top: 'auto', right: 'auto', width: '24px', height: '24px' }}
+                        title="Cancelar"
+                      >×</button>
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                <SortableTaskCard
+                  task={task}
+                  stageColor={stage.stage_color}
+                  category={getCategoryById(task.category_id)}
+                  onDelete={onDeleteTask}
+                  onEdit={openEditForm}
+                />
+              )}
+            </Fragment>
           ))}
         </SortableContext>
         
-        {showForm ? (
-          <form onSubmit={handleSubmit} className="task-form">
-            <input
-              type="text"
-              value={newTask}
-              onChange={(e) => setNewTask(e.target.value)}
-              placeholder="Nombre de tarea"
-              autoFocus
-              className="task-form__input"
-            />
-            <textarea
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="Descripción (opcional)"
-              className="task-form__input task-form__textarea"
-            />
-            {categories.length > 0 && (
-              <select
-                value={newCategoryId}
-                onChange={(e) => setNewCategoryId(e.target.value)}
-                className="task-form__input"
-              >
-                <option value="">Sin categoría</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            )}
-            <div className="task-form__buttons">
-              <button type="submit" className="task-form__add">+</button>
-              <button type="button" onClick={() => setShowForm(false)} className="task-form__cancel">×</button>
+        {isFormVisible ? (
+          <form onSubmit={handleSubmit} className="task-form task-form--inline" style={{ borderColor: getCategoryById(newCategoryId)?.color || '#6b7280', '--task-category-color': getCategoryById(newCategoryId)?.color || '#6b7280' } as React.CSSProperties}>
+            <div className="task-card__header" style={{ backgroundColor: getCategoryById(newCategoryId)?.color || '#6b7280' }}>
+              <span className="task-card__icon" style={{ backgroundColor: getCategoryById(newCategoryId)?.color || '#6b7280' }}>
+                {newCategoryId && getCategoryById(newCategoryId) ? getCategoryIcon(getCategoryById(newCategoryId)?.name || '', getCategoryById(newCategoryId)?.icon || '') : (
+                  <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                )}
+              </span>
+              <span className="task-card__title-container" style={{ borderColor: getCategoryById(newCategoryId)?.color || '#6b7280' }}>
+                <input
+                  type="text"
+                  value={newTask}
+                  onChange={(e) => {
+                    setNewTask(e.target.value)
+                    if (nameError) setNameError(null)
+                  }}
+                  placeholder="Nombre de tarea"
+                  maxLength={MAX_TASK_NAME_LENGTH}
+                  autoFocus
+                  className="task-card__title"
+                  style={{ background: 'transparent', border: 'none', flex: 1, padding: 0, width: '100%' }}
+                />
+                {nameError && (
+                  <span style={{ color: '#ef4444', fontSize: '12px', marginLeft: '8px' }}>{nameError}</span>
+                )}
+              </span>
+            </div>
+            <span className="task-card__description">
+              <textarea
+                value={newDescription}
+                onChange={(e) => {
+                  setNewDescription(e.target.value)
+                  if (descriptionError) setDescriptionError(null)
+                }}
+                placeholder="Descripción (opcional)"
+                maxLength={MAX_TASK_DESCRIPTION_LENGTH}
+                style={{ 
+                  width: '100%', 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: '#9ca3af',
+                  fontSize: '0.75rem',
+                  resize: 'none',
+                  outline: 'none'
+                }}
+              />
+              {descriptionError && (
+                <span style={{ color: '#ef4444', fontSize: '12px', marginLeft: '8px' }}>{descriptionError}</span>
+              )}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0.5rem', borderTop: '1px solid #3d3d3d', gap: '0.5rem' }}>
+              {categories.length > 0 && (
+                <div className="task-form-category-select">
+                  <div
+                    className={`task-form-category-select__trigger ${!newCategoryId ? 'task-form-category-select__trigger--empty' : ''}`}
+                    onClick={() => {
+                      const select = document.getElementById('new-task-category-select');
+                      if (select) (select as HTMLSelectElement).click();
+                    }}
+                  >
+                    {newCategoryId && getCategoryById(newCategoryId) ? (
+                      <>
+                        <span className="task-form-category-select__icon" style={{ backgroundColor: getCategoryById(newCategoryId)?.color }}>
+                          {getCategoryIcon(getCategoryById(newCategoryId)?.name || '', getCategoryById(newCategoryId)?.icon)}
+                        </span>
+                        <span style={{ flex: 1 }}>{getCategoryById(newCategoryId)?.name}</span>
+                      </>
+                    ) : (
+                      <span style={{ flex: 1 }}>Sin categoría</span>
+                    )}
+                    <span className="task-form-category-select__arrow">▼</span>
+                  </div>
+                  <select
+                    id="new-task-category-select"
+                    value={newCategoryId}
+                    onChange={(e) => setNewCategoryId(e.target.value)}
+                    className="task-form-category-select__hidden"
+                  >
+                    <option value="">Sin categoría</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
+                <button 
+                  type="submit" 
+                  className="task-card__edit"
+                  style={{ position: 'relative', top: 'auto', right: 'auto', width: '24px', height: '24px' }}
+                  title="Agregar"
+>+</button>
+                <button 
+                  type="button" 
+                  onClick={() => onSetShowAddForm?.(false)} 
+                  className="task-card__delete"
+                  style={{ position: 'relative', top: 'auto', right: 'auto', width: '24px', height: '24px' }}
+                  title="Cancelar"
+>×</button>
+              </div>
             </div>
           </form>
-        ) : (
-          <button onClick={() => setShowForm(true)} className="add-task-btn">
-            + Agregar tarea
+        ) : null}
+        </div>
+        {/* Floating add task button - only show for first stage and when not collapsed */}
+        {index === 0 && !isCollapsed && (
+          <button 
+            onClick={() => {
+              onSetEditingTaskId?.(null)  // Close any open edit form
+              onSetShowAddForm?.(true)
+            }} 
+            className="add-task-btn-floating"
+            title="Agregar tarea"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
           </button>
         )}
-      </div>
     </div>
   )
 }
@@ -612,14 +997,26 @@ interface ProjectCardProps {
 function ProjectCard({ project, onDelete }: ProjectCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
+  const [activeDragTask, setActiveDragTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(false)
+  
+  // Global editing state for cross-column form management
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [showAddFormStage, setShowAddFormStage] = useState<string | null>(null)
   const [stages, setStages] = useState<Stage[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   
-  // Sensores para drag and drop - fuera del JSX
+  // Sensores para drag and drop - configuracion optimizada para movimientos rapidos
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(PointerSensor, { 
+      activationConstraint: {
+        distance: 1,
+        tolerance: 5,
+      }
+    }),
+    useSensor(KeyboardSensor, { 
+      coordinateGetter: sortableKeyboardCoordinates 
+    })
   )
 
   // Cargar etapas del proyecto y tareas cuando se expande
@@ -678,6 +1075,15 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
     }
   }
 
+  const handleUpdateTask = async (taskId: string, data: { name?: string; description?: string; category_id?: string }) => {
+    try {
+      const updated = await subtasksApi.update(taskId, data)
+      setTasks(tasks.map(t => t.id === taskId ? updated : t))
+    } catch (err) {
+      console.error('Error:', err)
+    }
+  }
+
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event
     if (!over) return
@@ -685,22 +1091,28 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
     const activeId = active.id as string
     const overId = over.id as string
 
-    // Encontrar la tarea activa
     const activeTask = tasks.find(t => t.id === activeId)
     if (!activeTask) return
 
-    // Determinar el nuevo estado
     let newStatus = ''
     
-    // Verificar si es una columna
+    // Check if dropping over a stage (column)
     const overStage = stages.find(s => s.stage_id === overId)
     if (overStage) {
       newStatus = overStage.stage_id
     } else {
-      // Es otra tarea, usar su estado
+      // Check if dropping over another task
       const overTask = tasks.find(t => t.id === overId)
       if (overTask) {
         newStatus = overTask.status
+      }
+    }
+
+    // Also check if the droppable container is the stage (for empty columns)
+    if (!newStatus && over.id && typeof over.id === 'string') {
+      const stageMatch = stages.find(s => s.stage_id === over.id)
+      if (stageMatch) {
+        newStatus = stageMatch.stage_id
       }
     }
 
@@ -711,7 +1123,14 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
     }
   }
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeId = event.active.id as string
+    const task = tasks.find(t => t.id === activeId)
+    setActiveDragTask(task || null)
+  }
+
   const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragTask(null)
     const { active, over } = event
     if (!over) return
 
@@ -719,11 +1138,32 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
     const task = tasks.find(t => t.id === activeId)
     
     if (task) {
+      // Determine final status
+      let finalStatus = task.status
+      
+      // Check if dropped on a stage directly
+      const overStage = stages.find(s => s.stage_id === over.id)
+      if (overStage) {
+        finalStatus = overStage.stage_id
+      } else {
+        const overTask = tasks.find(t => t.id === over.id)
+        if (overTask) {
+          finalStatus = overTask.status
+        }
+      }
+      
+      // Only update if status changed
+      if (finalStatus !== task.status) {
+        setTasks(prev => prev.map(t => 
+          t.id === activeId ? { ...t, status: finalStatus } : t
+        ))
+      }
+      
       try {
-        await subtasksApi.update(task.id, { status: task.status })
+        await subtasksApi.update(task.id, { status: finalStatus })
       } catch (err) {
         console.error('Error:', err)
-        loadProjectData() // Recargar en caso de error
+        loadProjectData()
       }
     }
   }
@@ -751,23 +1191,64 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
           {loading ? (
             <p className="project-card__loading">Cargando...</p>
           ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={rectIntersection}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-            >
-              {tasksByStage.map(({ stage, tasks: stageTasks }) => (
-                <KanbanColumn
-                  key={stage.stage_id}
-                  stage={stage}
-                  tasks={stageTasks}
-                  categories={categories}
-                  onDeleteTask={handleDeleteTask}
-                  onAddTask={handleAddTask}
-                />
-              ))}
-            </DndContext>
+            <>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+              >
+                <div style={{ display: 'contents' }}>
+                  {tasksByStage.map(({ stage, tasks: stageTasks }, index) => (
+                    <KanbanColumn
+                      key={stage.stage_id}
+                      stage={stage}
+                      tasks={stageTasks}
+                      categories={categories}
+                      onDeleteTask={handleDeleteTask}
+                      onAddTask={handleAddTask}
+                      index={index}
+                      editingTaskId={editingTaskId}
+                      onSetEditingTaskId={setEditingTaskId}
+                      showAddForm={showAddFormStage === stage.stage_id}
+                      onSetShowAddForm={(show) => setShowAddFormStage(show ? stage.stage_id : null)}
+                    />
+                  ))}
+                </div>
+                <DragOverlay>
+                  {activeDragTask ? (
+                    <div 
+                      className="task-card task-card--overlay"
+                      style={{ 
+                        borderColor: getCategoryById(activeDragTask.category_id)?.color || '#6b7280' 
+                      }}
+                    >
+                      <div className="task-card__header">
+                        <span 
+                          className="task-card__icon" 
+                          style={{ backgroundColor: getCategoryById(activeDragTask.category_id)?.color || '#6b7280' }}
+                        >
+                          {activeDragTask.category_id ? (
+                            getCategoryIcon(getCategoryById(activeDragTask.category_id)?.name || '')
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="12" r="10" />
+                            </svg>
+                          )}
+                        </span>
+                        <span className="task-card__title-container">
+                          <span className="task-card__title">{activeDragTask.name}</span>
+                        </span>
+                      </div>
+                      {activeDragTask.description && (
+                        <span className="task-card__description">{activeDragTask.description}</span>
+                      )}
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+            </>
           )}
         </div>
       )}
@@ -827,6 +1308,17 @@ export default function ProjectsPage(): JSX.Element {
   const [loadingProject, setLoadingProject] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'created_at' | 'deadline'>('created_at')
+  const [collapsedStages, setCollapsedStages] = useState<Record<string, boolean>>({})
+
+  const toggleAllCollapsed = (collapse: boolean) => {
+    if (selectedProjectData) {
+      const newCollapsed: Record<string, boolean> = {}
+      selectedProjectData.stages.forEach(stage => {
+        newCollapsed[stage.stage_id] = collapse
+      })
+      setCollapsedStages(newCollapsed)
+    }
+  }
 
   // Cargar proyectos
   const loadProjects = async () => {
@@ -1020,67 +1512,129 @@ export default function ProjectsPage(): JSX.Element {
 
   // Handlers para drag and drop del kanban
   const kanbanSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { 
+      activationConstraint: { 
+        distance: 1,
+        tolerance: 5,
+      } 
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   const [kanbanTasks, setKanbanTasks] = useState<Task[]>([])
+  const kanbanTasksRef = useRef<Task[]>([])
+  const [activeKanbanDragTask, setActiveKanbanDragTask] = useState<Task | null>(null)
+  const lastOverTargetRef = useRef<string | null>(null)
+  
+  // Global editing state - controls which task is being edited across all columns
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [showAddFormStage, setShowAddFormStage] = useState<string | null>(null)
+  const draggedTaskOriginalStatusRef = useRef<string | null>(null)
 
   // Sincronizar tareas cuando se carga el proyecto
   useEffect(() => {
     if (selectedProjectData) {
       setKanbanTasks(selectedProjectData.tasks)
+      kanbanTasksRef.current = selectedProjectData.tasks
     }
   }, [selectedProjectData])
 
+  const handleKanbanDragStart = (event: DragStartEvent) => {
+    const activeId = event.active.id as string
+    const task = kanbanTasks.find(t => t.id === activeId)
+    if (task) {
+      setActiveKanbanDragTask(task)
+      // Guardar el estado original de la tarea antes de queDragOver lo cambie
+      draggedTaskOriginalStatusRef.current = task.status
+    }
+  }
+
   const handleKanbanDragOver = (event: DragOverEvent) => {
     const { active, over } = event
-    if (!over || !selectedProjectData) return
-
-    const activeId = active.id as string
-    const overId = over.id as string
-
-    const activeTask = kanbanTasks.find(t => t.id === activeId)
-    if (!activeTask) return
-
-    let newStatus = ''
     
-    const overStage = selectedProjectData.stages.find(s => s.stage_id === overId)
-    if (overStage) {
-      newStatus = overStage.stage_id
-    } else {
-      const overTask = kanbanTasks.find(t => t.id === overId)
-      if (overTask) {
-        newStatus = overTask.status
-      }
-    }
-
-    if (newStatus && newStatus !== activeTask.status) {
-      setKanbanTasks(prev => prev.map(t => 
-        t.id === activeId ? { ...t, status: newStatus } : t
-      ))
+    // Track the last valid over target (solo guardar, no actualizar estado)
+    if (over?.id) {
+      lastOverTargetRef.current = over.id as string
     }
   }
 
   const handleKanbanDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
-    if (!over || !selectedProjectData) return
+    
+    if (!selectedProjectData) {
+      setActiveKanbanDragTask(null)
+      lastOverTargetRef.current = null
+      return
+    }
 
     const activeId = active.id as string
-    const task = kanbanTasks.find(t => t.id === activeId)
+    const overId = over?.id || lastOverTargetRef.current
     
-    if (task) {
+    if (!overId) {
+      setActiveKanbanDragTask(null)
+      lastOverTargetRef.current = null
+      return
+    }
+
+    // Find the task being dragged
+    const task = kanbanTasks.find(t => t.id === activeId)
+    if (!task) {
+      setActiveKanbanDragTask(null)
+      lastOverTargetRef.current = null
+      return
+    }
+
+    // Determine the new status based on where it was dropped
+    let newStatus = ''
+    
+    // First, check if dropped on a stage (column header)
+    const overStage = selectedProjectData.stages.find(s => s.stage_id === overId)
+    if (overStage) {
+      newStatus = overStage.stage_id
+    } else {
+      // Check if dropped on a task
+      const overTask = kanbanTasks.find(t => t.id === overId)
+      if (overTask) {
+        newStatus = overTask.status
+      } else {
+        // Use last known target
+        const lastTarget = lastOverTargetRef.current
+        const lastStage = selectedProjectData.stages.find(s => s.stage_id === lastTarget)
+        if (lastStage) {
+          newStatus = lastStage.stage_id
+        } else {
+          const lastTask = kanbanTasks.find(t => t.id === lastTarget)
+          if (lastTask) {
+            newStatus = lastTask.status
+          }
+        }
+      }
+    }
+    
+    if (newStatus && draggedTaskOriginalStatusRef.current !== newStatus) {
       try {
-        await subtasksApi.update(task.id, { status: task.status })
-        // Actualizar el estado local
+        // Actualizar estado INMEDIATAMENTE para evitar animación de snap back
+        const updatedTasks = kanbanTasks.map(t => 
+          t.id === activeId ? { ...t, status: newStatus } : t
+        )
+        setKanbanTasks(updatedTasks)
+        kanbanTasksRef.current = updatedTasks
         setSelectedProjectData(prev => prev ? {
           ...prev,
-          tasks: kanbanTasks
+          tasks: updatedTasks
         } : null)
+        
+        // Luego guardar en la base de datos
+        await subtasksApi.update(task.id, { status: newStatus })
       } catch (err) {
         console.error('Error:', err)
       }
     }
+    
+    // Clear the active drag task and reset
+    setActiveKanbanDragTask(null)
+    lastOverTargetRef.current = null
+    draggedTaskOriginalStatusRef.current = null
   }
 
   const handleKanbanDeleteTask = async (taskId: string) => {
@@ -1110,6 +1664,19 @@ export default function ProjectsPage(): JSX.Element {
     }
   }
 
+  const handleKanbanUpdateTask = async (taskId: string, data: { name?: string; description?: string; category_id?: string }) => {
+    try {
+      const updated = await subtasksApi.update(taskId, data)
+      setKanbanTasks(prev => prev.map(t => t.id === taskId ? updated : t))
+      setSelectedProjectData(prev => prev ? {
+        ...prev,
+        tasks: prev.tasks.map(t => t.id === taskId ? updated : t)
+      } : null)
+    } catch (err) {
+      console.error('Error:', err)
+    }
+  }
+
   if (loading) {
     return <div className="projects-page"><p>Cargando...</p></div>
   }
@@ -1126,9 +1693,13 @@ export default function ProjectsPage(): JSX.Element {
             onClick={handleBackToList}
             disabled={loadingProject}
           >
-            ← Volver
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Volver
           </button>
-          <h1 className="projects-page__title" style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>{selectedProject?.name || 'Proyecto'}</h1>
+          <h1 className="projects-page__title">{selectedProject?.name || 'Proyecto'}</h1>
           {!showStageForm && (
             <button
               type="button"
@@ -1166,6 +1737,60 @@ export default function ProjectsPage(): JSX.Element {
               Editar Etapas
             </button>
           )}
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => toggleAllCollapsed(true)}
+              style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 0.75rem', 
+                background: 'var(--color-bg-tertiary)', 
+                border: '1px solid var(--color-border)', 
+                borderRadius: '6px', 
+                color: 'var(--text-primary)', 
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '0.75rem'
+              }}
+              title="Colapsar todas"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="4 14 10 14 10 20"></polyline>
+                <polyline points="20 10 14 10 14 4"></polyline>
+                <line x1="14" y1="10" x2="21" y2="3"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+              <span>Contraer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleAllCollapsed(false)}
+              style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 0.75rem', 
+                background: 'var(--color-bg-tertiary)', 
+                border: '1px solid var(--color-border)', 
+                borderRadius: '6px', 
+                color: 'var(--text-primary)', 
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '0.75rem'
+              }}
+              title="Expandir todas"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+              <span>Expandir</span>
+            </button>
+          </div>
         </div>
         
         {loadingProject ? (
@@ -1174,10 +1799,11 @@ export default function ProjectsPage(): JSX.Element {
             <span className="projects-page__loading-text">Cargando proyecto...</span>
           </div>
         ) : selectedProjectData ? (
-          <div className="kanban-board">
+          <div className={`kanban-board${selectedProjectData.stages.length > 0 && Object.values(collapsedStages).length === selectedProjectData.stages.length && Object.values(collapsedStages).every(v => v) ? ' kanban-board--all-collapsed' : ''}`}>
             <DndContext
               sensors={kanbanSensors}
               collisionDetection={rectIntersection}
+              onDragStart={handleKanbanDragStart}
               onDragOver={handleKanbanDragOver}
               onDragEnd={handleKanbanDragEnd}
             >
@@ -1221,7 +1847,7 @@ export default function ProjectsPage(): JSX.Element {
                       </div>
                       <DndContext
                         sensors={stageFormSensors}
-                        collisionDetection={rectIntersection}
+                        collisionDetection={closestCenter}
                         onDragEnd={(event) => {
                           const { active, over } = event
                           if (over && active.id !== over.id) {
@@ -1304,16 +1930,66 @@ export default function ProjectsPage(): JSX.Element {
                   )}
                 </div>
               ) : (
-                selectedProjectData.stages.map((stage) => (
-                  <KanbanColumn
-                    key={stage.stage_id}
-                    stage={stage}
-                    tasks={selectedProjectData.tasks.filter(t => t.status === stage.stage_id)}
-                    categories={selectedProjectData.categories}
-                    onDeleteTask={handleKanbanDeleteTask}
-                    onAddTask={handleKanbanAddTask}
-                  />
-                ))
+                <>
+                  {selectedProjectData.stages.map((stage, index) => (
+                    <KanbanColumn
+                      key={stage.stage_id}
+                      stage={stage}
+                      tasks={kanbanTasks.filter(t => t.status === stage.stage_id)}
+                      categories={selectedProjectData.categories}
+                      onDeleteTask={handleKanbanDeleteTask}
+                      onUpdateTask={handleKanbanUpdateTask}
+                      onAddTask={handleKanbanAddTask}
+                      isCollapsed={collapsedStages[stage.stage_id]}
+                      onToggleCollapse={(collapsed) => {
+                        setCollapsedStages(prev => ({ ...prev, [stage.stage_id]: collapsed }))
+                        // Close forms when collapsing
+                        if (collapsed) {
+                          setEditingTaskId(null)
+                          setShowAddFormStage(null)
+                        }
+                      }}
+                      index={index}
+                      editingTaskId={editingTaskId}
+                      onSetEditingTaskId={setEditingTaskId}
+                      showAddForm={showAddFormStage === stage.stage_id}
+                      onSetShowAddForm={(show) => setShowAddFormStage(show ? stage.stage_id : null)}
+                    />
+                  ))}
+                  <DragOverlay>
+                    {activeKanbanDragTask ? (
+                      <div 
+                        className="task-card task-card--overlay"
+                        style={{ 
+                          borderColor: selectedProjectData.categories.find(c => c.id === activeKanbanDragTask.category_id)?.color || '#6b7280' 
+                        }}
+                      >
+                        <div className="task-card__header">
+                          <span 
+                            className="task-card__icon" 
+                            style={{ backgroundColor: selectedProjectData.categories.find(c => c.id === activeKanbanDragTask.category_id)?.color || '#6b7280' }}
+                          >
+                            {activeKanbanDragTask.category_id ? (
+                              getCategoryIcon(selectedProjectData.categories.find(c => c.id === activeKanbanDragTask.category_id)?.name || '')
+                            ) : (
+                              <svg viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="12" cy="12" r="10" />
+                              </svg>
+                            )}
+                          </span>
+                          <span 
+                            className="task-card__title-container"
+                          >
+                            <span className="task-card__title">{activeKanbanDragTask.name}</span>
+                          </span>
+                        </div>
+                        {activeKanbanDragTask.description && (
+                          <span className="task-card__description">{activeKanbanDragTask.description}</span>
+                        )}
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </>
               )}
             </DndContext>
           </div>

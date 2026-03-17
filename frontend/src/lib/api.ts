@@ -1,7 +1,8 @@
 // API client para comunicarse con Flask
 // Usa proxy y token de Supabase
 
-const API_URL = '/api';
+// URL del API - usa variable de entorno en producción
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {

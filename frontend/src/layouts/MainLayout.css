@@ -23,10 +23,23 @@
 }
 
 .main-layout__logo {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
   text-decoration: none;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.main-layout__logo-icon {
+  color: var(--color-primary);
   font-size: 1.1rem;
+}
+
+.main-layout__logo-forge {
+  color: var(--color-primary);
+  font-weight: 700;
 }
 
 .main-layout__links {

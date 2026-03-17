@@ -7,6 +7,7 @@ from views.subtask_views import subtask_bp
 from views.stage_views import stage_bp
 from views.category_views import category_bp
 from views.project_stage_views import project_stage_bp
+from config import Config
 
 
 def create_app():
@@ -15,8 +16,9 @@ def create_app():
     app = Flask(__name__)
     
     # Habilitar CORS para permitir solicitudes desde el frontend
+    # Lee los orígenes desde la variable de entorno CORS_ORIGINS
     CORS(app, 
-         origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
+         origins=Config.CORS_ORIGINS,
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])

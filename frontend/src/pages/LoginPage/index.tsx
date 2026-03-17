@@ -129,13 +129,14 @@ export default function LoginPage(): JSX.Element {
               <button type="submit" className="login-page__button" disabled={isLoading}>
                 {isLoading ? 'Entrando...' : 'Entrar'}
               </button>
+              
             </form>
             <button 
               type="button" 
               className="login-page__test-btn"
               onClick={fillTestCredentials}
             >
-              📝 Credenciales de prueba
+              Credenciales de prueba
             </button>
           </>
         ) : (
@@ -189,7 +190,9 @@ export default function LoginPage(): JSX.Element {
         )}
 
         <p className="login-page__footer">
-          <Link to="/" className="login-page__link">Volver al inicio</Link>
+          <Link to="/forgot-password" className="login-page__forgot-link">
+                ¿Olvidaste tu contraseña?
+          </Link>
         </p>
       </div>
     </main>

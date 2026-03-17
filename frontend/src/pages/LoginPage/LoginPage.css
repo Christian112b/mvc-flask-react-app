@@ -205,3 +205,19 @@
   color: var(--color-primary-hover);
   text-decoration: underline;
 }
+
+/* Enlace de recuperación de contraseña */
+.login-page__forgot-link {
+  display: block;
+  text-align: center;
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  text-decoration: none;
+  margin-top: 0.75rem;
+  transition: color 0.2s ease;
+}
+
+.login-page__forgot-link:hover {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}

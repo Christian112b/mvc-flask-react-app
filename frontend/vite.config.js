@@ -11,5 +11,13 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  // Configuración para producción
+  build: {
+    // En producción, el proxy no funciona
+    // El frontend se serve desde un CDN y llama directamente al backend
+    // Por defecto, usa el mismo origen
+  },
+  // Variables de entorno disponibles
+  envPrefix: ['VITE_', 'PUBLIC_'],
 })

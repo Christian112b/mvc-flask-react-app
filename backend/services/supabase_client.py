@@ -71,9 +71,6 @@ class SupabaseClient:
         
         response = requests.post(url, json=data, headers=headers)
         
-        print(f"Insert response status: {response.status_code}")
-        print(f"Insert response text: {response.text}")
-        
         if response.status_code in [200, 201]:
             # Si la respuesta está vacía, retornar los datos enviados
             if response.text:

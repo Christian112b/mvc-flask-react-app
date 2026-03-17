@@ -8,6 +8,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, confirmPassword: string) => Promise<void>
   logout: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+  updatePassword: (newPassword: string) => Promise<void>
   isLoading: boolean
 }
 
@@ -90,9 +92,31 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     }
   }, [])
 
+  const resetPassword = useCallback(async (email: string): Promise<void> => {
+    // Solicitar correo de recuperación de contraseña
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`
+    })
+    
+    if (error) {
+      throw new Error(error.message)
+    }
+  }, [])
+
+  const updatePassword = useCallback(async (newPassword: string): Promise<void> => {
+    // Actualizar la contraseña usando el token de recuperación
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    })
+    
+    if (error) {
+      throw new Error(error.message)
+    }
+  }, [])
+
   const value = useMemo(
-    () => ({ isAuthenticated, user, login, register, logout, isLoading }),
-    [isAuthenticated, user, login, register, logout, isLoading]
+    () => ({ isAuthenticated, user, login, register, logout, resetPassword, updatePassword, isLoading }),
+    [isAuthenticated, user, login, register, logout, resetPassword, updatePassword, isLoading]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

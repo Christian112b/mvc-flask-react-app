@@ -1,9 +1,24 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'copy-redirects',
+      closeBundle() {
+        // Copy _redirects to dist after build
+        const src = './public/_redirects'
+        const dest = './dist/_redirects'
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest)
+          console.log('Copied _redirects to dist')
+        }
+      }
+    }
+  ],
   server: {
     proxy: {
       '/api': {
@@ -11,12 +26,6 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  },
-  // Configuración para producción
-  build: {
-    // En producción, el proxy no funciona
-    // El frontend se serve desde un CDN y llama directamente al backend
-    // Por defecto, usa el mismo origen
   },
   // Variables de entorno disponibles
   envPrefix: ['VITE_', 'PUBLIC_'],
